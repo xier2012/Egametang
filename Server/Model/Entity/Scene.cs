@@ -1,25 +1,8 @@
-﻿namespace Model
+﻿namespace ETModel
 {
-	public enum SceneType
-	{
-		Share,
-		Game,
-		Login,
-		Lobby,
-		Map,
-		Launcher,
-		Robot,
-		BehaviorTreeScene,
-		RobotClient,
-
-		Realm
-	}
-	
 	public sealed class Scene: Entity
 	{
 		public string Name { get; set; }
-
-		public SceneType SceneType { get; private set; }
 
 		public Scene()
 		{
@@ -31,7 +14,7 @@
 
 		public override void Dispose()
 		{
-			if (this.Id == 0)
+			if (this.IsDisposed)
 			{
 				return;
 			}

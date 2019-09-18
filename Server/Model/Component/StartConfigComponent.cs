@@ -2,21 +2,26 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 
-namespace Model
+namespace ETModel
 {
-	[ObjectEvent]
-	public class StartConfigComponentEvent : ObjectEvent<StartConfigComponent>, IAwake<string, int>
+	[ObjectSystem]
+	public class StartConfigComponentSystem : AwakeSystem<StartConfigComponent, string, int>
 	{
-		public void Awake(string a, int b)
+		public override void Awake(StartConfigComponent self, string a, int b)
 		{
-			this.Get().Awake(a, b);
+			self.Awake(a, b);
 		}
 	}
 	
 	public class StartConfigComponent: Component
 	{
+		public static StartConfigComponent Instance { get; private set; }
+		
 		private Dictionary<int, StartConfig> configDict;
+		
+		private Dictionary<int, IPEndPoint> innerAddressDict = new Dictionary<int, IPEndPoint>();
 		
 		public StartConfig StartConfig { get; private set; }
 
@@ -32,6 +37,8 @@ namespace Model
 
 		public void Awake(string path, int appId)
 		{
+			Instance = this;
+			
 			this.configDict = new Dictionary<int, StartConfig>();
 			this.MapConfigs = new List<StartConfig>();
 			this.GateConfigs = new List<StartConfig>();
@@ -48,6 +55,12 @@ namespace Model
 				{
 					StartConfig startConfig = MongoHelper.FromJson<StartConfig>(s2);
 					this.configDict.Add(startConfig.AppId, startConfig);
+
+					InnerConfig innerConfig = startConfig.GetComponent<InnerConfig>();
+					if (innerConfig != null)
+					{
+						this.innerAddressDict.Add(startConfig.AppId, innerConfig.IPEndPoint);
+					}
 
 					if (startConfig.AppType.Is(AppType.Realm))
 					{
@@ -74,13 +87,24 @@ namespace Model
 						this.GateConfigs.Add(startConfig);
 					}
 				}
-				catch (Exception)
+				catch (Exception e)
 				{
-					Log.Error($"config错误: {s2}");
+					Log.Error($"config错误: {s2} {e}");
 				}
 			}
 
 			this.StartConfig = this.Get(appId);
+		}
+
+		public override void Dispose()
+		{
+			if (this.IsDisposed)
+			{
+				return;
+			}
+			base.Dispose();
+			
+			Instance = null;
 		}
 
 		public StartConfig Get(int id)
@@ -92,6 +116,18 @@ namespace Model
 			catch (Exception e)
 			{
 				throw new Exception($"not found startconfig: {id}", e);
+			}
+		}
+		
+		public IPEndPoint GetInnerAddress(int id)
+		{
+			try
+			{
+				return this.innerAddressDict[id];
+			}
+			catch (Exception e)
+			{
+				throw new Exception($"not found innerAddress: {id}", e);
 			}
 		}
 

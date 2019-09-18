@@ -2,15 +2,16 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 
-namespace Model
+namespace ETModel
 {
-	[ObjectEvent]
-	public class AppManagerComponentEvent : ObjectEvent<AppManagerComponent>, IStart
+	[ObjectSystem]
+	public class AppManagerComponentAwakeSystem : AwakeSystem<AppManagerComponent>
 	{
-		public void Start()
+		public override void Awake(AppManagerComponent self)
 		{
-			this.Get().Start();
+			self.Awake();
 		}
 	}
 
@@ -18,13 +19,15 @@ namespace Model
 	{
 		private readonly Dictionary<int, Process> processes = new Dictionary<int, Process>();
 
-		public void Start()
+		public void Awake()
 		{
 			string[] ips = NetHelper.GetAddressIPs();
-			StartConfig[] startConfigs = Game.Scene.GetComponent<StartConfigComponent>().GetAll();
+			StartConfig[] startConfigs = StartConfigComponent.Instance.GetAll();
 			
 			foreach (StartConfig startConfig in startConfigs)
 			{
+				Game.Scene.GetComponent<TimerComponent>().WaitAsync(100);
+				
 				if (!ips.Contains(startConfig.ServerIP) && startConfig.ServerIP != "*")
 				{
 					continue;
@@ -38,47 +41,42 @@ namespace Model
 				StartProcess(startConfig.AppId);
 			}
 
-			this.WatchProcessAsync();
+			this.WatchProcessAsync().Coroutine();
 		}
 
 		private void StartProcess(int appId)
 		{
 			OptionComponent optionComponent = Game.Scene.GetComponent<OptionComponent>();
-			StartConfigComponent startConfigComponent = Game.Scene.GetComponent<StartConfigComponent>();
+			StartConfigComponent startConfigComponent = StartConfigComponent.Instance;
 			string configFile = optionComponent.Options.Config;
 			StartConfig startConfig = startConfigComponent.Get(appId);
-#if __MonoCS__
-			const string exe = @"mono";
-			string arguments = $"--debug App.exe --appId={startConfig.AppId} --appType={startConfig.AppType} --config={configFile}";
-#else
-			const string exe = @"App.exe";
-			string arguments = $"--appId={startConfig.AppId} --appType={startConfig.AppType} --config={configFile}";
-#endif
+			const string exe = "dotnet";
+			string arguments = $"App.dll --appId={startConfig.AppId} --appType={startConfig.AppType} --config={configFile}";
 
 			Log.Info($"{exe} {arguments}");
 			try
 			{
-				ProcessStartInfo info = new ProcessStartInfo { FileName = exe, Arguments = arguments, CreateNoWindow = true, UseShellExecute = true };
-
-				Process process = Process.Start(info);
+				Process process = ProcessHelper.Run(exe, arguments);
 				this.processes.Add(startConfig.AppId, process);
 			}
 			catch (Exception e)
 			{
-				Log.Error(e.ToString());
+				Log.Error(e);
 			}
 		}
 
 		/// <summary>
 		/// 监控启动的进程,如果进程挂掉了,重新拉起
 		/// </summary>
-		private async void WatchProcessAsync()
+		private async ETVoid WatchProcessAsync()
 		{
+			long instanceId = this.InstanceId;
+			
 			while (true)
 			{
 				await Game.Scene.GetComponent<TimerComponent>().WaitAsync(5000);
 
-				if (this.Id == 0)
+				if (this.InstanceId != instanceId)
 				{
 					return;
 				}
